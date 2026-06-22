@@ -1,3 +1,4 @@
+// 自动适配 API 地址：线上环境使用相对路径，本地开发通过 Vite 代理
 const BASE_URL = '/api'
 
 /**
