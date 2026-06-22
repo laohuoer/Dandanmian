@@ -167,7 +167,7 @@
                   <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path>
                 </svg>
                 <p>点击或拖拽上传多张图片</p>
-                <span>支持 JPG / PNG / GIF / WebP，单张最大 10MB，最多 20 张</span>
+                <span>支持 JPG / PNG / GIF / WebP，单张最大 10MB，最多 20 张，大图将自动压缩</span>
               </div>
               <div v-else class="file-list">
                 <div v-for="(file, idx) in batchFiles" :key="idx" class="file-item">
@@ -206,7 +206,7 @@
                 :disabled="batchFiles.length === 0 || !batchCategory || batchUploading"
                 @click="handleBatchUpload"
               >
-                {{ batchUploading ? '上传中...' : `上传 ${batchFiles.length} 张照片` }}
+                {{ batchUploading ? '压缩并上传中...' : `压缩并上传 ${batchFiles.length} 张照片` }}
               </button>
             </div>
           </div>

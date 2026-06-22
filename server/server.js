@@ -3,11 +3,106 @@ import cors from 'cors'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
+import sharp from 'sharp'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
 const DB_PATH = path.join(__dirname, 'db.json')
+
+// ===== 图片压缩配置 =====
+const COMPRESS_OPTIONS = {
+  maxWidth: 1920,          // 最大宽度
+  maxHeight: 1080,         // 最大高度
+  quality: 80,             // 压缩质量 (1-100)
+  jpegQuality: 80,         // JPEG 质量覆盖
+  pngQuality: 80,          // PNG 质量覆盖
+  webpQuality: 80,         // WebP 质量覆盖
+  gifQuality: 80,          // GIF 质量覆盖
+  threshold: 500 * 1024,   // 超过 500KB 才压缩
+  withoutEnlargement: true // 不放大小图
+}
+
+/**
+ * 压缩图片文件
+ * @param {string} filePath - 图片文件路径
+ * @returns {Promise<{originalSize: number, compressedSize: number, compressed: boolean}>}
+ */
+async function compressImage(filePath) {
+  const originalSize = fs.statSync(filePath).size
+
+  // 如果文件小于阈值，不压缩
+  if (originalSize < COMPRESS_OPTIONS.threshold) {
+    return { originalSize, compressedSize: originalSize, compressed: false }
+  }
+
+  const ext = path.extname(filePath).toLowerCase()
+  const tempPath = filePath + '.tmp'
+
+  try {
+    let pipeline = sharp(filePath)
+      .resize(COMPRESS_OPTIONS.maxWidth, COMPRESS_OPTIONS.maxHeight, {
+        fit: 'inside',
+        withoutEnlargement: COMPRESS_OPTIONS.withoutEnlargement
+      })
+
+    // 根据格式选择压缩参数
+    switch (ext) {
+      case '.jpg':
+      case '.jpeg':
+        pipeline = pipeline.jpeg({ quality: COMPRESS_OPTIONS.jpegQuality, mozjpeg: true })
+        break
+      case '.png':
+        pipeline = pipeline.png({ quality: COMPRESS_OPTIONS.pngQuality, compressionLevel: 8 })
+        break
+      case '.webp':
+        pipeline = pipeline.webp({ quality: COMPRESS_OPTIONS.webpQuality })
+        break
+      case '.gif':
+        // sharp 对 GIF 的支持有限，使用 webp 作为中间格式再转回可能丢失动画
+        // 对于 GIF，仅做尺寸调整，不做质量压缩
+        pipeline = pipeline.gif({ effort: 10 })
+        break
+      default:
+        pipeline = pipeline.jpeg({ quality: COMPRESS_OPTIONS.jpegQuality, mozjpeg: true })
+    }
+
+    await pipeline.toFile(tempPath)
+
+    const compressedSize = fs.statSync(tempPath).size
+
+    // 如果压缩后反而更大，保留原文件
+    if (compressedSize >= originalSize) {
+      fs.unlinkSync(tempPath)
+      return { originalSize, compressedSize: originalSize, compressed: false }
+    }
+
+    // 用压缩后的文件替换原文件
+    fs.unlinkSync(filePath)
+    fs.renameSync(tempPath, filePath)
+
+    const ratio = ((1 - compressedSize / originalSize) * 100).toFixed(1)
+    console.log(`📦 图片压缩: ${path.basename(filePath)} | ${formatSize(originalSize)} → ${formatSize(compressedSize)} (节省 ${ratio}%)`)
+
+    return { originalSize, compressedSize, compressed: true }
+  } catch (err) {
+    // 压缩失败时清理临时文件，保留原文件
+    if (fs.existsSync(tempPath)) {
+      fs.unlinkSync(tempPath)
+    }
+    console.warn(`⚠️ 图片压缩失败: ${path.basename(filePath)}`, err.message)
+    return { originalSize, compressedSize: originalSize, compressed: false }
+  }
+}
+
+/**
+ * 格式化文件大小
+ */
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + 'B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + 'MB'
+}
 
 // ===== 工具函数：读写 db.json =====
 function readDB() {
@@ -60,14 +155,29 @@ const upload = multer({
 
 // ===== 图片上传接口 =====
 app.post('/api/upload', (req, res) => {
-  upload.single('image')(req, res, (err) => {
+  upload.single('image')(req, res, async (err) => {
     if (err) {
       return res.status(400).json({ error: err.message })
     }
     if (!req.file) {
       return res.status(400).json({ error: '请选择要上传的图片' })
     }
-    res.json({ url: `/uploads/${req.file.filename}` })
+
+    // 自动压缩图片
+    const filePath = req.file.path
+    try {
+      const result = await compressImage(filePath)
+      res.json({
+        url: `/uploads/${req.file.filename}`,
+        compressed: result.compressed,
+        originalSize: result.originalSize,
+        compressedSize: result.compressedSize
+      })
+    } catch (compressErr) {
+      // 压缩失败仍返回原图片
+      console.warn('图片压缩异常，返回原图:', compressErr.message)
+      res.json({ url: `/uploads/${req.file.filename}` })
+    }
   })
 })
 
@@ -212,7 +322,7 @@ app.post('/api/photos/batch-delete', (req, res) => {
 
 // 批量上传照片
 app.post('/api/photos/batch-upload', (req, res) => {
-  upload.array('images', 20)(req, res, (err) => {
+  upload.array('images', 20)(req, res, async (err) => {
     if (err) {
       return res.status(400).json({ error: err.message })
     }
@@ -224,7 +334,20 @@ app.post('/api/photos/batch-upload', (req, res) => {
     const db = readDB()
     const created = []
 
+    // 批量压缩图片
+    const compressResults = []
     for (const file of req.files) {
+      try {
+        const result = await compressImage(file.path)
+        compressResults.push({ filename: file.filename, ...result })
+      } catch (compressErr) {
+        console.warn(`批量上传压缩失败: ${file.filename}`, compressErr.message)
+        compressResults.push({ filename: file.filename, originalSize: 0, compressedSize: 0, compressed: false })
+      }
+    }
+
+    for (const file of req.files) {
+      const compressInfo = compressResults.find(r => r.filename === file.filename)
       const newPhoto = {
         id: getNextId(db.photos),
         seed: '',
@@ -232,7 +355,10 @@ app.post('/api/photos/batch-upload', (req, res) => {
         category,
         width: 800,
         height: 600,
-        url: `/uploads/${file.filename}`
+        url: `/uploads/${file.filename}`,
+        compressed: compressInfo ? compressInfo.compressed : false,
+        originalSize: compressInfo ? compressInfo.originalSize : 0,
+        compressedSize: compressInfo ? compressInfo.compressedSize : 0
       }
       db.photos.push(newPhoto)
       created.push(newPhoto)

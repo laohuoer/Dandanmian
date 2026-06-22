@@ -16,9 +16,17 @@
       <div class="form-section">
         <label class="form-label">照片图片</label>
         <div class="upload-area" @click="triggerUpload" @dragover.prevent @drop.prevent="handleDrop">
-          <div v-if="previewUrl" class="upload-preview">
+          <div v-if="compressing" class="upload-compressing">
+            <div class="compress-spinner"></div>
+            <p>正在压缩图片...</p>
+          </div>
+          <div v-else-if="previewUrl" class="upload-preview">
             <img :src="previewUrl" alt="预览" />
             <button type="button" class="remove-preview" @click.stop="removeImage">✕</button>
+            <div v-if="compressInfo" class="compress-info">
+              <span class="compress-badge">已压缩</span>
+              <span class="compress-detail">{{ compressInfo }}</span>
+            </div>
           </div>
           <div v-else class="upload-placeholder">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -27,7 +35,7 @@
               <polyline points="21 15 16 10 5 21"></polyline>
             </svg>
             <p>点击或拖拽上传图片</p>
-            <span>支持 JPG / PNG / GIF / WebP，最大 10MB</span>
+            <span>支持 JPG / PNG / GIF / WebP，最大 10MB，大图将自动压缩</span>
           </div>
         </div>
         <input ref="fileInput" type="file" accept="image/*" class="hidden-input" @change="handleFileChange" />
@@ -92,6 +100,8 @@ const categories = ref([])
 const submitting = ref(false)
 const fileInput = ref(null)
 const previewUrl = ref('')
+const compressing = ref(false)
+const compressInfo = ref('')
 
 const form = ref({
   title: '',
@@ -118,15 +128,32 @@ async function handleDrop(e) {
   await uploadFile(file)
 }
 
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + 'B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + 'MB'
+}
+
 async function uploadFile(file) {
   try {
+    compressing.value = true
+    compressInfo.value = ''
     previewUrl.value = URL.createObjectURL(file)
     const result = await uploadImage(file)
     form.value.url = result.url
     form.value.seed = ''
+
+    // 显示压缩信息
+    if (result.compressed && result.originalSize && result.compressedSize) {
+      const ratio = ((1 - result.compressedSize / result.originalSize) * 100).toFixed(1)
+      compressInfo.value = `${formatSize(result.originalSize)} → ${formatSize(result.compressedSize)} (节省 ${ratio}%)`
+    }
   } catch (e) {
     alert('上传失败: ' + e.message)
     previewUrl.value = ''
+    compressInfo.value = ''
+  } finally {
+    compressing.value = false
   }
 }
 
@@ -135,6 +162,7 @@ function removeImage() {
     URL.revokeObjectURL(previewUrl.value)
   }
   previewUrl.value = ''
+  compressInfo.value = ''
   form.value.url = null
   if (fileInput.value) fileInput.value.value = ''
 }
@@ -324,6 +352,59 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* ===== 压缩中状态 ===== */
+.upload-compressing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--primary);
+  padding: 1rem 0;
+}
+
+.upload-compressing p {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.compress-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #e0e7ff;
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ===== 压缩信息 ===== */
+.compress-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  justify-content: center;
+}
+
+.compress-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  background: #d1fae5;
+  color: #059669;
+  border-radius: 1rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.compress-detail {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
 }
 
 .hidden-input {
