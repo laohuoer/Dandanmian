@@ -12,8 +12,8 @@ const DB_PATH = path.join(__dirname, 'db.json')
 
 // ===== 图片压缩配置 =====
 const COMPRESS_OPTIONS = {
-  maxWidth: 1920,          // 最大宽度
-  maxHeight: 1080,         // 最大高度
+  maxWidth: 6000,          // 最大宽度
+  maxHeight: 6000,         // 最大高度
   quality: 80,             // 压缩质量 (1-100)
   jpegQuality: 80,         // JPEG 质量覆盖
   pngQuality: 80,          // PNG 质量覆盖
@@ -141,7 +141,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
   fileFilter: (req, file, cb) => {
     const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
     const ext = path.extname(file.originalname).toLowerCase()
@@ -439,10 +439,28 @@ app.delete('/api/categories/:id', (req, res) => {
   res.json({ success: true })
 })
 
+// ===== 生产环境：提供前端静态文件 =====
+const distPath = path.join(__dirname, '..', 'dist')
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath))
+  // SPA 路由回退：所有非 API/非静态文件请求返回 index.html
+  app.use((req, res, next) => {
+    if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.startsWith('/uploads')) {
+      res.sendFile(path.join(distPath, 'index.html'))
+    } else {
+      next()
+    }
+  })
+  console.log('📁 生产模式：已挂载前端静态文件')
+}
+
 // ===== 启动服务器 =====
-const PORT = 3001
+const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
-  console.log(`🚀 API Server 运行在 http://localhost:${PORT}`)
+  console.log(`🚀 Server 运行在 http://localhost:${PORT}`)
   console.log(`📡 API 端点: http://localhost:${PORT}/api/photos, /api/categories`)
   console.log(`📤 上传接口: http://localhost:${PORT}/api/upload`)
+  if (fs.existsSync(distPath)) {
+    console.log(`🌐 前端页面: http://localhost:${PORT}`)
+  }
 })
