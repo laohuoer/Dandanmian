@@ -35,7 +35,7 @@
               <polyline points="21 15 16 10 5 21"></polyline>
             </svg>
             <p>点击或拖拽上传图片</p>
-            <span>支持 JPG / PNG / GIF / WebP，最大 10MB，大图将自动压缩</span>
+            <span>支持 JPG / PNG / GIF / WebP，最大 50MB，大图将自动压缩</span>
           </div>
         </div>
         <input ref="fileInput" type="file" accept="image/*" class="hidden-input" @change="handleFileChange" />
