@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Redirecting...</title>
+  <script>
+    // GitHub Pages SPA hack: when a direct URL like /Dandanmian/admin/dashboard
+    // is accessed, GitHub Pages returns this 404.html because no physical file exists.
+    // We redirect to index.html with the original path as a query parameter,
+    // so Vue Router can handle the correct route.
+    var l = window.location;
+    var basePath = '/Dandanmian/';
+    var originalPath = l.pathname.replace(basePath, '') + l.search + l.hash;
+    var targetUrl = l.origin + basePath + '?redirect=' + encodeURIComponent(originalPath);
+    l.replace(targetUrl);
+  </script>
+</head>
+<body>
+  <p>正在跳转，请稍候...</p>
+</body>
+</html>
