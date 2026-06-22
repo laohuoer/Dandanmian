@@ -1,0 +1,1 @@
+import{g as o}from"./categories-BZycflPZ.js";function n(e){const a=new FormData;return a.append("image",e),o("/upload",a)}function c(e,a={}){const t=new FormData;for(const r of e)t.append("images",r);return a.category&&t.append("category",a.category),a.title&&t.append("title",a.title),o("/photos/batch-upload",t)}export{c as b,n as u};
