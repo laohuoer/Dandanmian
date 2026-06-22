@@ -4,8 +4,8 @@ import { upload, post } from './index.js'
  * 客户端图片压缩配置
  */
 const CLIENT_COMPRESS_OPTIONS = {
-  maxWidth: 1920,
-  maxHeight: 1080,
+  maxWidth: 6000,
+  maxHeight: 6000,
   quality: 0.8,           // 压缩质量 0-1
   threshold: 500 * 1024,   // 超过 500KB 才压缩
   mimeType: 'image/jpeg'   // 默认输出 JPEG 格式
